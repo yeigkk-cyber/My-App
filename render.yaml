@@ -2,14 +2,10 @@ services:
   - type: web
     name: fabric-register
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: FABRIC_DATA_DIR
-        value: /var/data
+        value: /tmp/fabric-data
       - key: FABRIC_LOGIN_CODE
         sync: false
-    disk:
-      name: fabric-data
-      mountPath: /var/data
-      sizeGB: 1
