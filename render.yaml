@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: fabric-register
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: FABRIC_DATA_DIR
+        value: /var/data
+      - key: FABRIC_LOGIN_CODE
+        sync: false
+    disk:
+      name: fabric-data
+      mountPath: /var/data
+      sizeGB: 1
