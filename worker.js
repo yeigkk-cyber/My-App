@@ -162,19 +162,19 @@ async function mergeData(env, incoming) {
     for (const entry of Array.isArray(incoming.history) ? incoming.history : []) {
       if (entry?.id != null) history.set(String(entry.id), entry);
     }
+    const itemRows = [...items.values()].map(payload => ({ id: String(payload.id), payload }));
+    const historyRows = [...history.values()].map(payload => ({ id: String(payload.id), payload }));
+    // Save incoming rows first. If a later request fails during a replacement,
+    // the previous catalog remains visible until all new rows have been stored.
+    for (let i = 0; i < itemRows.length; i += 100) await supabaseUpsert(env, "app_items", itemRows.slice(i, i + 100));
+    for (let i = 0; i < historyRows.length; i += 100) await supabaseUpsert(env, "app_history", historyRows.slice(i, i + 100));
     for (let i = 0; i < tombstones.length; i += 200) {
       await supabaseUpsert(env, "app_deleted_ids", tombstones.slice(i, i + 200).map(id => ({ id })), "id");
     }
-    const itemRows = [...items.values()].map(payload => ({ id: String(payload.id), payload }));
-    const historyRows = [...history.values()].map(payload => ({ id: String(payload.id), payload }));
-    for (let i = 0; i < itemRows.length; i += 100) await supabaseUpsert(env, "app_items", itemRows.slice(i, i + 100));
-    for (let i = 0; i < historyRows.length; i += 100) await supabaseUpsert(env, "app_history", historyRows.slice(i, i + 100));
     return readData(env);
   }
   const tombstones = [...new Set((Array.isArray(incoming.deletedIds) ? incoming.deletedIds : []).map(String))];
   const statements = [];
-  for (const id of tombstones) statements.push(env.DB.prepare("INSERT OR IGNORE INTO deleted_ids (id) VALUES (?)").bind(id));
-  for (const id of tombstones) statements.push(env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id));
   for (const item of Array.isArray(incoming.items) ? incoming.items : []) {
     if (!item || item.id == null || tombstones.includes(String(item.id))) continue;
     statements.push(env.DB.prepare("INSERT INTO items (id, payload) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload").bind(String(item.id), JSON.stringify(item)));
@@ -183,6 +183,9 @@ async function mergeData(env, incoming) {
     if (!entry || entry.id == null) continue;
     statements.push(env.DB.prepare("INSERT INTO history (id, payload) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload").bind(String(entry.id), JSON.stringify(entry)));
   }
+  // In replacement mode, write new item/history rows before hiding old ids.
+  for (const id of tombstones) statements.push(env.DB.prepare("INSERT OR IGNORE INTO deleted_ids (id) VALUES (?)").bind(id));
+  for (const id of tombstones) statements.push(env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id));
   await batchChunks(env, statements);
   return readData(env);
 }
